@@ -120,12 +120,18 @@ module parser #(parameter MAX_ROWS = 11, parameter MAX_COLS = 11, MAX_NUM_OPTION
         end
     end
 
-    always_comb begin
-        if (line_index < m)begin //dealing with rows
-            row = 1;
-        end else begin  //dealing with cols
-            row = 0;
-        end
+    // always_comb begin
+    //     if (line_index < m)begin //dealing with rows
+    //         row = 1;
+    //     end else begin  //dealing with cols
+    //         row = 0;
+    //     end
+    // end
+always_ff @(posedge clk) begin
+        if (rst)
+            row <= 1; // Default to rows first
+        else if (valid_in)
+            row <= (line_index < m);
     end
 endmodule
 
