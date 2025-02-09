@@ -133,7 +133,7 @@ module top_level (
         .num_rows(m[1]),
         .num_cols(n[1]),
         .old_options_amnt(options_per_line),  //[0:2*SIZE] [6:0]
-        .all_options_remaining(7'b1111111), //TODO: replace with total number of options
+            .all_options_remaining($clog2(MAX_NUM_OPTIONS)), //TODO: replace with total number of options
         //Taken from the BRAM in the top level- how many options for this line
         .new_line(solve_next),
         .new_option(solve_line),
