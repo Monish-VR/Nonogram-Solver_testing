@@ -1,1 +1,146 @@
+`default_nettype none
+`timescale 1ns / 1ps
+
+module top_level (
+    input wire clk_100mhz,
+    input wire btnc,
+    input wire rx,
+    output logic tx,
+    output logic [7:0] bits,
+    output logic [2:0] stat
+);
+    
+    localparam MAX_ROWS = 11;
+    localparam MAX_COLS = 11;
+    localparam LARGEST_DIM = (MAX_ROWS > MAX_COLS) ? MAX_ROWS : MAX_COLS;
+    localparam MAX_NUM_OPTIONS = 84;
+    
+    localparam RECEIVE = 0, SOLVE = 1, TRANSMIT = 2;
+    localparam CYCLES = 50_000_000;
+    localparam MAX_BYTE = 255;
+    localparam COUNTER_WIDTH = $clog2(CYCLES);
+    
+    logic rst, clk_50mhz, fifo_rst, row;
+    logic [COUNTER_WIDTH-1:0] counter;
+    logic [7:0] transmit_data, received_data, display_value;
+    logic receive_done, transmit_valid, transmit_done, next_line;
+    logic fifo_write, parse_write, solve_write, solve_next;
+    logic [1:0] state;
+    logic [15:0] fifo_in, fifo_out, parse_line, solve_line;
+    logic fifo_empty, fifo_full;
+    logic parsed, solved, assembled;
+    logic [2:0] [$clog2(MAX_ROWS)-1:0] m;
+    logic [2:0] [$clog2(MAX_COLS)-1:0] n;
+    logic [MAX_ROWS+MAX_COLS-1:0] [$clog2(MAX_NUM_OPTIONS)-1:0] options_per_line;
+    logic [1:0] [(MAX_ROWS * MAX_COLS)-1:0] solution;
+    logic [(MAX_ROWS * MAX_COLS)-1:0] knowns;
+    
+    assign stat = {state, fifo_empty};
+    assign rst = btnc;
+    assign fifo_rst = rst || solved;
+    assign bits = display_value;
+    assign fifo_write = (state == RECEIVE) ? parse_write : solve_write;
+    assign fifo_in = (state == RECEIVE) ? parse_line : solve_line;
+    
+    clk_wiz_50 divider (
+        .clk_in1(clk_100mhz),
+        .clk_out1(clk_50mhz)
+    );
+    
+    uart_rx receiver (
+        .clk(clk_50mhz),
+        .rst(rst),
+        .axiid(rx),
+        .axiov(receive_done),
+        .axiod(received_data)
+    );
+    
+    parser parse (
+        .clk(clk_50mhz),
+        .rst(rst),
+        .valid_in(receive_done),
+        .byte_in(received_data),
+        .board_done(parsed),
+        .write_ready(parse_write),
+        .line(parse_line),
+        .options_per_line(options_per_line),
+        .n(n[0]),
+        .m(m[0]),
+        .row(row)
+    );
+    
+    fifo_11_by_11 fifo (
+        .clk(clk_50mhz),
+        .srst(fifo_rst),
+        .din(fifo_in),
+        .wr_en(fifo_write),
+        .rd_en(solve_next),
+        .dout(fifo_out),
+        .full(fifo_full),
+        .empty(fifo_empty)
+    );
+    
+    solver sol (
+        .clk(clk_50mhz),
+        .rst(rst),
+        .started(parsed),
+        .option(fifo_out),
+        .num_rows(m[1]),
+        .num_cols(n[1]),
+        .old_options_amnt(options_per_line),
+        .new_line(solve_next),
+        .new_option(solve_line),
+        .assigned(solution[0]),
+        .put_back_to_FIFO(solve_write),
+        .solved(solved)
+    );
+    
+    assembler assemble (
+        .clk(clk_50mhz),
+        .rst(rst),
+        .valid_in(solved),
+        .transmit_done(transmit_done),
+        .solution(solution[1]),
+        .n(n[2]),
+        .m(m[2]),
+        .send(transmit_valid),
+        .byte_out(transmit_data),
+        .done(assembled)
+    );
+    
+    uart_tx transmitter (
+        .clk(clk_50mhz),
+        .rst(rst),
+        .axiiv(transmit_valid),
+        .axiid(transmit_data),
+        .axiod(tx),
+        .done(transmit_done)
+    );
+    
+    always_ff @(posedge clk_50mhz) begin
+        if (rst) begin
+            counter <= 0;
+            state <= RECEIVE;
+            display_value <= 0;
+        end else begin
+            if (receive_done) display_value <= received_data;
+            else if (transmit_done) display_value <= transmit_data;
+            
+            solution[1] <= solution[0];
+            n[1] <= n[0];       
+            n[2] <= n[1];
+            m[1] <= m[0];
+            m[2] <= m[1];
+            
+            case(state)
+                RECEIVE: state <= (parsed) ? SOLVE : RECEIVE;
+                SOLVE: state <= (solved) ? TRANSMIT : SOLVE;
+                TRANSMIT: state <= (assembled) ? RECEIVE : TRANSMIT;
+            endcase
+        end
+    end
+    
+endmodule
+
+`default_nettype wire
 
