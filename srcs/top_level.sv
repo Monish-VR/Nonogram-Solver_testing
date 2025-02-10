@@ -129,7 +129,7 @@ module top_level (
         .num_rows(m[1]),
         .num_cols(n[1]),
         .old_options_amnt(options_per_line),
-        .all_options_remaining(options_per_line_cols), // Corrected assignment
+        .all_options_remaining($clog2(MAX_NUM_OPTIONS)), // Corrected assignment
         .new_line(solve_next),
         .new_option(solve_line),
         .assigned(solution[0]),  
